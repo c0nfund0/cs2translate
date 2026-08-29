@@ -1,0 +1,5 @@
+# CUDA runtime libraries for CTranslate2's fp16 backend. Kept in their own file
+# so GitHub Actions' pip cache key covers them -- these are ~1.2GB of wheels and
+# re-downloading them dominates build time.
+nvidia-cublas-cu12
+nvidia-cudnn-cu12

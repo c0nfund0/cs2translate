@@ -30,7 +30,7 @@ pip install -r requirements.txt || exit /b 1
 pip install pyinstaller || exit /b 1
 if "%CS2T_CUDA%"=="1" (
   echo       ...plus cuBLAS/cuDNN for GPU inference
-  pip install nvidia-cublas-cu12 nvidia-cudnn-cu12 || exit /b 1
+  pip install -r requirements-cuda.txt || exit /b 1
 )
 
 echo [3/5] Running tests...

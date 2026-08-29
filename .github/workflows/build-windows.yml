@@ -40,6 +40,11 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
+          # Cover the CUDA wheels too; they are ~1.2GB and dominate build time
+          # when they have to be re-downloaded.
+          cache-dependency-path: |
+            requirements.txt
+            requirements-cuda.txt
 
       # Only a manual run can turn CUDA off. Note this cannot be written as
       # `inputs.with_cuda == false`: on a push event `inputs.with_cuda` is null,
@@ -64,7 +69,7 @@ jobs:
 
       - name: Install CUDA runtime libraries
         if: steps.flags.outputs.cuda == '1'
-        run: pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+        run: pip install -r requirements-cuda.txt
 
       - name: Run tests
         run: python -m pytest tests -q

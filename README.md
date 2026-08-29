@@ -91,6 +91,33 @@ honest about:
 `python -m cs2translate --log-level DEBUG` prints per-utterance timings and
 `avg_latency` in the shutdown summary.
 
+## Diagnosing "it says listening but nothing happens"
+
+```
+cs2translate.exe --monitor
+```
+
+Loads no models, starts instantly, and prints a live meter of the audio path:
+
+```
+  mono  -28.3 dB   vad 0.94 SPEECH   ch 1: -22.1 2: -21.8 3:  --  4:  -- ...
+```
+
+On Ctrl-C it prints a verdict that separates the three failure modes: no audio
+reaching the app at all (wrong capture device), audio arriving but the VAD never
+firing (level or threshold), or both working (problem is downstream in ASR/TTS).
+
+**Surround endpoints.** If the startup log shows more than 2 channels, e.g.
+
+```
+capturing loopback: Speakers (PRO X 2 LIGHTSPEED) [Loopback] (48000 Hz, 8 ch)
+```
+
+that is a 7.1 endpoint. Windows puts ordinary stereo content in front L/R and
+leaves the rest digitally silent, so the mono downmix normalises by the channels
+actually carrying signal. `--monitor` shows the per-channel levels, so you can
+see which ones are live.
+
 ## Tuning
 
 Copy `config.example.toml` and pass `--config`.

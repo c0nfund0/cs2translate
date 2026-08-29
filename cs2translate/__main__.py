@@ -45,6 +45,82 @@ def list_devices() -> int:
     return 0
 
 
+def _dbfs(rms: float) -> str:
+    """RMS to dBFS, with a readable floor for digital silence."""
+    import math
+
+    if rms <= 1e-6:
+        return "  -- "
+    return f"{20 * math.log10(rms):6.1f}"
+
+
+def run_monitor(capture, vad, threshold: float) -> int:
+    """Live meter: is audio arriving, on which channels, and does the VAD see it?
+
+    Deliberately loads no models, so it starts instantly and isolates the audio
+    path from everything downstream of it.
+    """
+    import numpy as np
+
+    from .clock import now
+
+    capture.start()
+    frame = vad.frame_samples
+    pending = np.zeros(0, dtype=np.float32)
+    energy, samples, peak_p = 0.0, 0, 0.0
+    ever_audio, ever_speech = False, 0.0
+    last = now()
+
+    print("\nPlay some audio. Ctrl-C to stop.")
+    print("  mono/ch levels are dBFS ('--' is digital silence); vad is 0.0-1.0\n")
+    try:
+        for block in capture.blocks():
+            pending = np.concatenate([pending, block])
+            energy += float(np.sum(block.astype(np.float64) ** 2))
+            samples += len(block)
+            while len(pending) >= frame:
+                f, pending = pending[:frame], pending[frame:]
+                peak_p = max(peak_p, float(vad(f)))
+            if now() - last < 0.2:
+                continue
+
+            rms = (energy / samples) ** 0.5 if samples else 0.0
+            ever_audio = ever_audio or rms > 1e-6
+            ever_speech = max(ever_speech, peak_p)
+            flag = "SPEECH" if peak_p >= threshold else "      "
+            dm = getattr(capture, "downmixer", None)
+            chans = ""
+            if dm is not None and dm.channels > 2:
+                chans = "  ch " + " ".join(
+                    f"{i + 1}:{_dbfs(float(v))}" for i, v in enumerate(dm.channel_rms)
+                )
+            sys.stdout.write(
+                f"\r  mono {_dbfs(rms)} dB   vad {peak_p:4.2f} {flag}{chans}   "
+            )
+            sys.stdout.flush()
+            energy, samples, peak_p = 0.0, 0, 0.0
+            last = now()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        capture.stop()
+
+    print("\n")
+    if not ever_audio:
+        print("VERDICT: no audio reached the app at all.")
+        print("  The capture device is not the one your audio is playing to.")
+        print("  Check Windows Volume mixer for the app's output device, then")
+        print("  re-run with --capture-device \"<part of the name>\".")
+    elif ever_speech < threshold:
+        print(f"VERDICT: audio is arriving, but the VAD never crossed {threshold:.2f}")
+        print(f"  (peak was {ever_speech:.2f}). Either the level is too low, or the")
+        print("  threshold is too high. Lower vad.threshold in your config.")
+    else:
+        print(f"VERDICT: audio and speech detection both working (VAD peaked at {ever_speech:.2f}).")
+        print("  The audio path is fine; any problem is downstream in ASR or TTS.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="cs2translate",
@@ -60,6 +136,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--voice", help="piper voice, e.g. en_US-lessac-medium")
     p.add_argument("--file", type=Path, help="offline mode: run the pipeline on a 16-bit WAV")
     p.add_argument("--no-speak", action="store_true", help="log translations without speaking")
+    p.add_argument(
+        "--monitor",
+        action="store_true",
+        help="audio level + VAD meter only; loads no models. Use this to find out "
+        "whether audio is reaching the app at all.",
+    )
     p.add_argument("--duck", action="store_true", help="lower other apps' volume while speaking")
     p.add_argument("--log-level", default=None, help="DEBUG | INFO | WARNING")
     return p
@@ -111,6 +193,11 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     vad = load_vad(cache, cfg.vad.model_path, cfg.audio.sample_rate)
+
+    if args.monitor:
+        # Before any model loads: answers "is audio even arriving?" in seconds.
+        return run_monitor(capture, vad, cfg.vad.threshold)
+
     segmenter = Segmenter(
         vad,
         sample_rate=cfg.audio.sample_rate,

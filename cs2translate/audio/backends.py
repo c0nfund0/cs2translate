@@ -18,7 +18,7 @@ import numpy as np
 
 from ..clock import now
 from .gate import FeedbackGate
-from .resample import Resampler, to_mono
+from .resample import Downmixer, Resampler
 
 log = logging.getLogger(__name__)
 
@@ -86,6 +86,7 @@ class WasapiLoopbackCapture(CaptureBackend):
         self._pa = None
         self._stream = None
         self._resampler: Resampler | None = None
+        self._downmix: Downmixer | None = None
         self._channels = 2
         self.device_name = "?"
 
@@ -119,15 +120,24 @@ class WasapiLoopbackCapture(CaptureBackend):
         in_rate = int(dev["defaultSampleRate"])
         self._channels = int(dev["maxInputChannels"])
         self._resampler = Resampler(in_rate, self.out_rate)
+        self._downmix = Downmixer(self._channels)
         log.info(
             "capturing loopback: %s (%d Hz, %d ch)", self.device_name, in_rate, self._channels
         )
+        if self._channels > 2:
+            # Worth calling out: a surround endpoint means most channels are
+            # digitally silent for ordinary stereo content, and a naive average
+            # across all of them would cost ~12 dB.
+            log.info(
+                "surround endpoint (%d ch); mixing only the channels carrying signal",
+                self._channels,
+            )
 
         def callback(in_data, frame_count, time_info, status):
             if status:
                 log.debug("capture status flags: %s", status)
             pcm = np.frombuffer(in_data, dtype=np.float32)
-            mono = to_mono(pcm, self._channels)
+            mono = self._downmix(pcm)  # type: ignore[misc]
             self._emit(self._resampler.process(mono))  # type: ignore[union-attr]
             return (None, pyaudio.paContinue)
 
@@ -141,6 +151,11 @@ class WasapiLoopbackCapture(CaptureBackend):
             stream_callback=callback,
         )
         self._stream.start_stream()
+
+    @property
+    def downmixer(self) -> Downmixer | None:
+        """Exposed so --monitor can render per-channel levels."""
+        return self._downmix
 
     def stop(self) -> None:
         self._stop.set()
@@ -180,6 +195,7 @@ class WavFileCapture(CaptureBackend):
             width = wf.getsampwidth()
             in_rate = wf.getframerate()
             resampler = Resampler(in_rate, self.out_rate)
+            downmix = Downmixer(channels)
             if width != 2:
                 raise ValueError(f"{self.path}: expected 16-bit PCM, got {width * 8}-bit")
             period = self.block_frames / in_rate
@@ -189,7 +205,7 @@ class WavFileCapture(CaptureBackend):
                 if not raw:
                     break
                 pcm = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
-                self._emit(resampler.process(to_mono(pcm, channels)))
+                self._emit(resampler.process(downmix(pcm)))
                 if self.realtime:
                     next_at += period
                     delay = next_at - now()

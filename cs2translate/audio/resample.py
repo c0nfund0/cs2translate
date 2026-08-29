@@ -24,12 +24,77 @@ def backend() -> str:
 
 
 def to_mono(pcm: np.ndarray, channels: int) -> np.ndarray:
-    """Interleaved frames -> mono float32."""
+    """Interleaved frames -> mono float32, flat average across all channels.
+
+    Correct only for mono and stereo. Use `Downmixer` for anything wider -- see
+    the explanation there.
+    """
     if channels == 1:
         return pcm.astype(np.float32, copy=False)
     usable = (len(pcm) // channels) * channels
     frames = pcm[:usable].reshape(-1, channels)
     return frames.mean(axis=1, dtype=np.float32)
+
+
+# Standard WAVE_FORMAT_EXTENSIBLE channel order puts LFE third for 5.1 and 7.1:
+# FL, FR, FC, LFE, BL, BR, [SL, SR]. LFE is low-frequency rumble that only
+# muddies speech, so it never contributes to the mono mix.
+_LFE_INDEX = {6: 3, 8: 3}
+
+
+class Downmixer:
+    """Interleaved multichannel -> mono, normalised by *active* channels.
+
+    A flat average is wrong for a surround endpoint. Windows renders stereo
+    content into front L/R and leaves the remaining channels digitally silent,
+    so averaging across an 8-channel 7.1 endpoint computes (L+R)/8 instead of
+    (L+R)/2 and throws away 12 dB before the VAD ever sees the audio.
+
+    Rather than assume a layout, track a smoothed per-channel RMS and divide by
+    however many channels are actually carrying signal. That gives (L+R)/2 for
+    stereo-on-a-7.1-endpoint and a sensible average for genuine surround, with
+    no configuration.
+    """
+
+    def __init__(self, channels: int, smoothing: float = 0.9, floor_ratio: float = 0.02):
+        self.channels = channels
+        self._smoothing = smoothing
+        self._floor_ratio = floor_ratio
+        self._ema = np.zeros(channels, dtype=np.float32)
+        self._lfe = _LFE_INDEX.get(channels)
+
+    @property
+    def channel_rms(self) -> np.ndarray:
+        """Smoothed per-channel RMS. Drives the --monitor meter."""
+        return self._ema.copy()
+
+    @property
+    def active_channels(self) -> int:
+        return int(self._mask().sum())
+
+    def _mask(self) -> np.ndarray:
+        peak = float(self._ema.max())
+        if peak <= 0.0:
+            mask = np.ones(self.channels, dtype=bool)
+        else:
+            mask = self._ema > peak * self._floor_ratio
+        if self._lfe is not None:
+            mask[self._lfe] = False
+        if not mask.any():
+            mask = np.ones(self.channels, dtype=bool)
+        return mask
+
+    def __call__(self, pcm: np.ndarray) -> np.ndarray:
+        if self.channels == 1:
+            return pcm.astype(np.float32, copy=False)
+        usable = (len(pcm) // self.channels) * self.channels
+        frames = pcm[:usable].reshape(-1, self.channels).astype(np.float32, copy=False)
+        if self.channels == 2:
+            return frames.mean(axis=1, dtype=np.float32)
+        rms = np.sqrt(np.mean(frames**2, axis=0))
+        self._ema = self._smoothing * self._ema + (1.0 - self._smoothing) * rms
+        mask = self._mask()
+        return frames[:, mask].sum(axis=1, dtype=np.float32) / float(mask.sum())
 
 
 class Resampler:

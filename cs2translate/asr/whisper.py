@@ -73,6 +73,9 @@ class WhisperTranslator:
         self.cfg = cfg
         self.compute_type = choose_compute_type(cfg)
         self.model = self._load(self.compute_type)
+        # Why the last utterance was dropped. The pipeline aggregates these so
+        # a silent app can explain itself without needing DEBUG.
+        self.last_reject_reason: str | None = None
 
     def _load(self, compute_type: str):
         from faster_whisper import WhisperModel
@@ -120,8 +123,10 @@ class WhisperTranslator:
         )
         segments = list(segments)
         asr_ms = (now() - t0) * 1000
+        self.last_reject_reason = None
 
         if not segments:
+            self.last_reject_reason = "no-segments"
             log.debug("no segments (%.0fms)", asr_ms)
             return None
 
@@ -137,16 +142,19 @@ class WhisperTranslator:
             max_compression_ratio=self.cfg.max_compression_ratio,
         )
         if reason:
+            self.last_reject_reason = reason.split("=")[0]
             log.debug("rejected (%s): %r", reason, text)
             return None
 
         lang = (info.language or "??").lower()
         lang_p = float(info.language_probability or 0.0)
         if lang_p < self.cfg.min_language_probability:
+            self.last_reject_reason = "low-language-confidence"
             log.debug("rejected (language %s p=%.2f): %r", lang, lang_p, text)
             return None
         if lang in self.cfg.skip_languages:
-            log.info("[%s] (already English, not spoken) %s", lang, text)
+            self.last_reject_reason = f"skipped-language:{lang}"
+            log.info("[%s] (already this language, not spoken) %s", lang, text)
             return None
 
         return Translation(

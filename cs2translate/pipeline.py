@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import queue
 import threading
+from collections import Counter
 from dataclasses import dataclass, field
 
 from .asr.whisper import Translation, WhisperTranslator
@@ -123,6 +124,9 @@ class Pipeline:
         self._stop = threading.Event()
         self._threads: list[threading.Thread] = []
         self.paused = threading.Event()
+        # Rolling tally so a silent app can say why, at INFO, without DEBUG.
+        self._reasons: Counter[str] = Counter()
+        self._last_report = now()
 
     @property
     def idle(self) -> bool:
@@ -202,7 +206,11 @@ class Pipeline:
                 continue
             if result is None:
                 self.stats.bump("rejected")
+                reason = getattr(self.translator, "last_reject_reason", None) or "unknown"
+                self._reasons[reason] += 1
+                self._maybe_report()
                 continue
+            self._reasons.clear()
             self.stats.bump("translated")
             log.info(
                 "[%s p=%.2f %.0fms] %s",
@@ -214,6 +222,20 @@ class Pipeline:
             if self.on_line:
                 self.on_line(result)
             self._enqueue(self._tts_q, result, "tts")
+
+    def _maybe_report(self, every: float = 20.0) -> None:
+        """Periodically explain a stretch of nothing-happening.
+
+        Without this the app looks identical whether it is hearing nothing,
+        rejecting everything as non-speech, or skipping the language on
+        purpose -- and the difference only showed up at DEBUG.
+        """
+        if now() - self._last_report < every or not self._reasons:
+            return
+        self._last_report = now()
+        detail = ", ".join(f"{n}x {r}" for r, n in self._reasons.most_common(4))
+        log.info("nothing spoken in the last %.0fs -- dropped: %s", every, detail)
+        self._reasons.clear()
 
     # -- stage 3: Piper + playback ----------------------------------------
     def _tts_loop(self) -> None:

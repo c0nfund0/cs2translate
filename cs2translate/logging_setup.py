@@ -32,5 +32,18 @@ def setup(level: str = "INFO") -> None:
     root = logging.getLogger()
     root.handlers[:] = [handler]
     root.setLevel(getattr(logging, level.upper(), logging.INFO))
-    # These are chatty and we have our own status line.
-    logging.getLogger("faster_whisper").setLevel(logging.WARNING)
+    # Third-party DEBUG output buries our own. huggingface_hub's HTTP stack
+    # alone emits dozens of lines per model check, which made the first real
+    # --log-level DEBUG capture almost unreadable.
+    for noisy in (
+        "faster_whisper",
+        "httpx",
+        "httpcore",
+        "huggingface_hub",
+        "urllib3",
+        "filelock",
+        "piper",
+        "onnxruntime",
+        "matplotlib",
+    ):
+        logging.getLogger(noisy).setLevel(logging.WARNING)

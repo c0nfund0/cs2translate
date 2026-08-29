@@ -1,0 +1,20 @@
+# build output
+build/
+dist/
+*.spec.bak
+.venv/
+.venv-build/
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# models + caches (multi-GB, downloaded on first run)
+*.onnx
+*.onnx.json
+models/
+
+# local config
+config.toml

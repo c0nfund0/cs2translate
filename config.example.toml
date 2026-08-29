@@ -1,0 +1,37 @@
+# cs2translate configuration. Every value here is a default -- delete any line
+# you do not want to override.
+
+log_level = "INFO"
+
+[audio]
+# Substring match against the device name. Leave unset to use the default
+# output device's loopback.
+# capture_device = "Headset Earphone"
+# playback_device = "Headset Earphone"
+gate_tail_ms = 300          # keep ignoring capture this long after we stop speaking
+
+[vad]
+threshold = 0.6             # raise toward 0.7 if gunfire triggers false utterances
+min_silence_ms = 280        # lower = snappier, but chops mid-sentence pauses
+min_speech_ms = 250
+pre_roll_ms = 300
+max_utterance_ms = 8000
+
+[asr]
+model = "large-v3"
+device = "cuda"
+compute_type = "auto"       # auto = float16, stepping down if VRAM is tight
+vram_guard_mib = 4608
+beam_size = 1               # greedy; beam search costs latency we do not have
+skip_languages = ["en"]     # do not speak English back at you
+min_language_probability = 0.5
+
+[tts]
+voice = "en_US-lessac-medium"
+length_scale = 0.95         # <1 speaks faster
+volume = 1.0
+max_gap_wait_ms = 1500      # hold a line this long waiting for a gap in speech
+
+[pipeline]
+max_utterance_age_ms = 4000 # a callout older than this is worse than silence
+duck_game_audio = false

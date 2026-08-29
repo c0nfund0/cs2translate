@@ -1,0 +1,101 @@
+name: build-windows-exe
+
+# Builds the distributable on a real Windows runner. PyInstaller cannot
+# cross-compile and the payload here is native (CTranslate2, onnxruntime,
+# PortAudio, cuDNN), so this is the only place the exe can be produced.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    # Doc-only edits should not spend 20 minutes downloading CUDA.
+    paths-ignore:
+      - "**/*.md"
+      - ".gitignore"
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - "**/*.md"
+  workflow_dispatch:
+    inputs:
+      with_cuda:
+        description: "Bundle cuBLAS + cuDNN (GPU works on machines with only a driver)"
+        type: boolean
+        default: true
+
+# A new push supersedes an in-flight build of the same branch.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # Only a manual run can turn CUDA off. Note this cannot be written as
+      # `inputs.with_cuda == false`: on a push event `inputs.with_cuda` is null,
+      # and GitHub's loose equality coerces null and false to the same value, so
+      # that form would silently disable CUDA on every push.
+      - name: Resolve build flags
+        id: flags
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && \
+             [ "${{ inputs.with_cuda }}" = "false" ]; then
+            echo "cuda=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "cuda=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller pytest
+
+      - name: Install CUDA runtime libraries
+        if: steps.flags.outputs.cuda == '1'
+        run: pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+
+      - name: Run tests
+        run: python -m pytest tests -q
+
+      - name: Build
+        env:
+          CS2T_CUDA: ${{ steps.flags.outputs.cuda }}
+        run: pyinstaller --noconfirm --clean cs2translate.spec
+
+      # Catches the failure mode this project is most exposed to: a native
+      # dependency that PyInstaller's scanner missed, which only shows up when
+      # the frozen binary actually imports it.
+      - name: Smoke test the frozen exe
+        run: |
+          dist\cs2translate\cs2translate.exe --help
+          if ($LASTEXITCODE -ne 0) { throw "frozen exe failed to start" }
+
+      - name: Package
+        shell: pwsh
+        run: |
+          Copy-Item config.example.toml dist\cs2translate\ -Force
+          Compress-Archive -Path dist\cs2translate\* -DestinationPath cs2translate-windows-x64.zip
+          "$([math]::Round((Get-Item cs2translate-windows-x64.zip).Length/1MB,1)) MB" | Tee-Object -Variable sz
+          "### Build OK — ``$sz`` zipped" >> $env:GITHUB_STEP_SUMMARY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cs2translate-windows-x64
+          path: cs2translate-windows-x64.zip
+          retention-days: 30
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: cs2translate-windows-x64.zip

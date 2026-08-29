@@ -1,0 +1,16 @@
+# core pipeline
+numpy>=1.24
+faster-whisper>=1.0.3        # CTranslate2 Whisper; provides onnxruntime too
+onnxruntime>=1.17            # Silero VAD (CPU)
+soxr>=0.3.7                  # fast stateful resampling 48k -> 16k
+piper-tts>=1.2.0             # local neural TTS (CPU)
+nvidia-ml-py>=12.535         # free-VRAM query for the precision guard
+
+# Windows audio (WASAPI loopback capture + playback)
+PyAudioWPatch>=0.2.12.7 ; sys_platform == "win32"
+
+# optional: lower other apps' volume while speaking (--duck)
+pycaw>=20240210 ; sys_platform == "win32"
+
+# fallback resampler if soxr wheels are unavailable
+scipy>=1.10

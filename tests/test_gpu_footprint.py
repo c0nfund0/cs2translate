@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import pytest
 
-from cs2translate.asr.whisper import WhisperTranslator
+import os
+
+from cs2translate.asr.whisper import WhisperTranslator, choose_cpu_threads
 from cs2translate.config import AsrConfig
 from cs2translate.priority import _CLASSES, limit_math_threads, set_process_priority
 
@@ -97,9 +99,28 @@ def test_no_unload_when_the_backend_cannot_do_it(monkeypatch):
     assert t.maybe_unload() is False
 
 
-def test_cpu_threads_defaults_are_modest():
-    """One worker per core would fight the game's render thread for nothing."""
-    assert 0 < AsrConfig().cpu_threads <= 4
+def test_cpu_thread_default_is_auto():
+    assert AsrConfig().cpu_threads == 0
+
+
+def test_cuda_keeps_the_thread_pool_small():
+    """On CUDA these threads only feed the GPU; a pool per core would fight
+    the game's render thread for no gain."""
+    assert choose_cpu_threads(AsrConfig(device="cuda")) <= 4
+
+
+def test_cpu_gets_most_of_the_machine():
+    """On CPU these threads ARE the inference. Starving them at 2 took a
+    medium model to ~7s per utterance -- past the staleness window, so
+    nothing was ever spoken."""
+    n = choose_cpu_threads(AsrConfig(device="cpu"))
+    assert n >= 4
+    assert n > choose_cpu_threads(AsrConfig(device="cuda"))
+    assert n <= (os.cpu_count() or 4)
+
+
+def test_explicit_thread_count_wins():
+    assert choose_cpu_threads(AsrConfig(device="cpu", cpu_threads=3)) == 3
 
 
 def test_thread_env_is_capped_before_native_imports():

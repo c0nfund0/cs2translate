@@ -129,6 +129,7 @@ class Pipeline:
         self._reasons: Counter[str] = Counter()
         self._last_report = now()
         self.duty = DutyLimiter(cfg.asr.max_duty_cycle)
+        self._warned_slow = False
 
     @property
     def idle(self) -> bool:
@@ -226,6 +227,15 @@ class Pipeline:
                 self._maybe_report()
                 continue
             self._reasons.clear()
+            if result.asr_ms > self.max_age * 1000 and not self._warned_slow:
+                self._warned_slow = True
+                log.warning(
+                    "inference takes %.1fs but utterances are discarded after %.1fs, so "
+                    "nothing will ever be spoken. Use --device cuda, a smaller --model, "
+                    "or raise pipeline.max_utterance_age_ms.",
+                    result.asr_ms / 1000,
+                    self.max_age,
+                )
             self.stats.bump("translated")
             log.info(
                 "[%s p=%.2f %.0fms] %s",

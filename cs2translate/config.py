@@ -77,7 +77,9 @@ class AsrConfig:
     download_root: Path | None = None
     # CTranslate2 worker threads. 0 = its default (one per core), which
     # competes with the game's render thread for no benefit on GPU.
-    cpu_threads: int = 2
+    # 0 = auto: 2 on CUDA (these threads only do pre/post-processing there),
+    # but most of the machine on CPU, where they ARE the inference.
+    cpu_threads: int = 0
     # Cap the share of wall-clock time spent in inference. 0 disables. Set
     # this if the pipeline is costing framerate: in a match the VAD fires far
     # more often than teammates speak, because the game's own radio lines are

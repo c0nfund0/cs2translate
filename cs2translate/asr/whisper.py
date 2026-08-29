@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -45,6 +46,22 @@ def _free_vram_mib() -> int | None:
         return None
 
 
+def choose_cpu_threads(cfg: AsrConfig) -> int:
+    """Resolve `cpu_threads = 0`.
+
+    On CUDA these threads only feed the GPU, so keeping the pool small leaves
+    cores for the game. On CPU they perform the inference itself: starving it
+    at 2 threads took a medium model to ~7s per utterance, past the staleness
+    window, so nothing was ever spoken.
+    """
+    if cfg.cpu_threads:
+        return cfg.cpu_threads
+    if cfg.device == "cuda":
+        return 2
+    cores = os.cpu_count() or 4
+    return max(4, cores - 2)  # leave a couple for the game and the audio thread
+
+
 def choose_compute_type(cfg: AsrConfig) -> str:
     """large-v3 at float16 is ~3GB. On an 8-10GB card that fits, but CS2's own
     allocation moves around, so check free VRAM at load time and step down to
@@ -82,12 +99,14 @@ class WhisperTranslator:
     def _load(self, compute_type: str):
         from faster_whisper import WhisperModel
 
-        kwargs = {"device": self.cfg.device, "compute_type": compute_type}
-        if self.cfg.cpu_threads:
-            kwargs["cpu_threads"] = self.cfg.cpu_threads
+        threads = choose_cpu_threads(self.cfg)
+        kwargs = {"device": self.cfg.device, "compute_type": compute_type, "cpu_threads": threads}
         if self.cfg.download_root:
             kwargs["download_root"] = str(Path(self.cfg.download_root))
-        log.info("loading %s (%s, %s)", self.cfg.model, self.cfg.device, compute_type)
+        log.info(
+            "loading %s (%s, %s, %d cpu threads)",
+            self.cfg.model, self.cfg.device, compute_type, threads,
+        )
         t0 = now()
         try:
             model = WhisperModel(self.cfg.model, **kwargs)

@@ -1,5 +1,3 @@
-import sys
-
 import pytest
 
 from cs2translate.config import AppConfig, tomllib

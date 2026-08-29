@@ -190,6 +190,7 @@ CUDA or WASAPI would have been testable from Linux. Use Option A or B above.
 python -m pytest tests -q
 ```
 
-31 tests, no GPU or Windows audio required — fakes stand in for CUDA, WASAPI and
+34 tests, no GPU or Windows audio required — fakes stand in for CUDA, WASAPI and
 Piper, so segmentation, filtering, the feedback gate and the stage wiring are all
-covered on any platform.
+covered on any platform, along with the clock-resolution guarantee the
+staleness policy depends on.

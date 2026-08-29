@@ -16,6 +16,7 @@ from pathlib import Path
 
 import numpy as np
 
+from ..clock import now
 from .gate import FeedbackGate
 from .resample import Resampler, to_mono
 
@@ -182,7 +183,7 @@ class WavFileCapture(CaptureBackend):
             if width != 2:
                 raise ValueError(f"{self.path}: expected 16-bit PCM, got {width * 8}-bit")
             period = self.block_frames / in_rate
-            next_at = time.monotonic()
+            next_at = now()
             while not self._stop.is_set():
                 raw = wf.readframes(self.block_frames)
                 if not raw:
@@ -191,7 +192,7 @@ class WavFileCapture(CaptureBackend):
                 self._emit(resampler.process(to_mono(pcm, channels)))
                 if self.realtime:
                     next_at += period
-                    delay = next_at - time.monotonic()
+                    delay = next_at - now()
                     if delay > 0:
                         time.sleep(delay)
         self._close()

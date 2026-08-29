@@ -9,11 +9,11 @@ from __future__ import annotations
 import logging
 import queue
 import threading
-import time
 from dataclasses import dataclass, field
 
 from .asr.whisper import Translation, WhisperTranslator
-from .audio.backends import CaptureBackend, Playback
+from .audio.backends import CaptureBackend
+from .clock import now
 from .config import AppConfig
 from .vad.segmenter import Segmenter, Utterance
 
@@ -55,12 +55,12 @@ class Ducker:
         self.enabled = False
         if not enabled:
             return
-        try:
-            from pycaw.pycaw import AudioUtilities  # noqa: F401
+        import importlib.util
 
+        if importlib.util.find_spec("pycaw") is None:
+            log.warning("audio ducking needs pycaw; continuing without it")
+        else:
             self.enabled = True
-        except Exception as exc:
-            log.warning("audio ducking unavailable (%s); continuing without it", exc)
 
     def _own_pid(self) -> int:
         import os
@@ -257,7 +257,7 @@ class Pipeline:
                 # state is stale; reset it rather than let it drift.
                 self.segmenter.reset()
 
-            latency = (time.monotonic() - result.utterance.captured_at) * 1000
+            latency = (now() - result.utterance.captured_at) * 1000
             self.stats.bump("spoken")
             self.stats.bump("total_latency_ms", latency)
             log.debug("spoke after %.0fms end-to-end", latency)

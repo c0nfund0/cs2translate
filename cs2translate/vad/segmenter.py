@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import logging
 import threading
-import time
 from dataclasses import dataclass
 
 import numpy as np
+
+from ..clock import now
 
 log = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ class Utterance:
 
     @property
     def age(self) -> float:
-        return time.monotonic() - self.captured_at
+        return now() - self.captured_at
 
 
 class Segmenter:
@@ -148,7 +149,7 @@ class Segmenter:
             return None
         return Utterance(
             audio=audio,
-            captured_at=time.monotonic(),
+            captured_at=now(),
             duration=duration,
             peak_probability=self._peak,
         )

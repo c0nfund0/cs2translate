@@ -7,7 +7,9 @@ is a timestamp: capture drops every frame until it passes.
 from __future__ import annotations
 
 import threading
-import time
+
+
+from ..clock import now
 
 
 class FeedbackGate:
@@ -28,13 +30,13 @@ class FeedbackGate:
         buffered device audio do not leak back in."""
         with self._lock:
             self._speaking = False
-            self._blocked_until = time.monotonic() + self._tail
+            self._blocked_until = now() + self._tail
 
     def is_blocked(self) -> bool:
         with self._lock:
             if self._speaking:
                 return True
-            return time.monotonic() < self._blocked_until
+            return now() < self._blocked_until
 
     @property
     def speaking(self) -> bool:

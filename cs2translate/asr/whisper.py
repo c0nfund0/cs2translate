@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 import logging
-import time
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 
+from ..clock import now
 from ..config import AsrConfig
 from ..vad.segmenter import Utterance
 from . import filters
@@ -81,7 +81,7 @@ class WhisperTranslator:
         if self.cfg.download_root:
             kwargs["download_root"] = str(Path(self.cfg.download_root))
         log.info("loading %s (%s, %s)", self.cfg.model, self.cfg.device, compute_type)
-        t0 = time.monotonic()
+        t0 = now()
         try:
             model = WhisperModel(self.cfg.model, **kwargs)
         except Exception as exc:
@@ -92,7 +92,7 @@ class WhisperTranslator:
                 model = WhisperModel(self.cfg.model, **kwargs)
             else:
                 raise
-        log.info("model ready in %.1fs", time.monotonic() - t0)
+        log.info("model ready in %.1fs", now() - t0)
         return model
 
     def warmup(self) -> None:
@@ -106,7 +106,7 @@ class WhisperTranslator:
             log.warning("warmup failed: %s", exc)
 
     def translate(self, utt: Utterance) -> Translation | None:
-        t0 = time.monotonic()
+        t0 = now()
         segments, info = self.model.transcribe(
             utt.audio,
             task=self.cfg.task,
@@ -119,7 +119,7 @@ class WhisperTranslator:
             no_speech_threshold=self.cfg.no_speech_threshold,
         )
         segments = list(segments)
-        asr_ms = (time.monotonic() - t0) * 1000
+        asr_ms = (now() - t0) * 1000
 
         if not segments:
             log.debug("no segments (%.0fms)", asr_ms)

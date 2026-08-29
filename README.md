@@ -141,6 +141,21 @@ pulls them in again on demand, so the game keeps the VRAM during the long
 stretches when nobody is talking. It is off by default because it trades
 latency for headroom.
 
+**If VRAM is not the whole story**, the pipeline is probably inferring far more
+often than teammates actually speak. CS2's own radio lines ("Enemy spotted",
+"Fire in the hole") are real speech: they trigger the VAD legitimately, cost a
+full inference, and are then discarded for being English. Two answers:
+
+```
+cs2translate.exe --max-gpu-duty 0.3     # cap inference at 30% of wall time
+cs2translate.exe --device cpu --model medium --compute-type int8
+```
+
+The first bounds the framerate cost but drops some real callouts along with the
+noise. The second removes the GPU from the pipeline entirely -- latency goes to
+~1-2s, framerate cost goes to zero. The periodic log line reports the measured
+`inference load` so you can see which regime you are in.
+
 To tell VRAM pressure from compute contention: `--compute-type int8_float16`
 halves memory with near-identical compute. If the framerate recovers, it was
 memory. If only `--model medium` helps, it was compute. `nvidia-smi` while both

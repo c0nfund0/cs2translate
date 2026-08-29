@@ -78,6 +78,11 @@ class AsrConfig:
     # CTranslate2 worker threads. 0 = its default (one per core), which
     # competes with the game's render thread for no benefit on GPU.
     cpu_threads: int = 2
+    # Cap the share of wall-clock time spent in inference. 0 disables. Set
+    # this if the pipeline is costing framerate: in a match the VAD fires far
+    # more often than teammates speak, because the game's own radio lines are
+    # speech. Over budget, utterances are dropped -- real ones included.
+    max_duty_cycle: float = 0.0
     # Move the model out of VRAM after this many seconds with nothing to
     # translate, and pull it back on demand. 0 disables. Frees ~3GB while
     # nobody is talking, at the cost of ~0.3-1s on the first callout after a

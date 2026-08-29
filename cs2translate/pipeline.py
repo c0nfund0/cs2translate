@@ -12,6 +12,7 @@ import threading
 from collections import Counter
 from dataclasses import dataclass, field
 
+from .asr.duty import DutyLimiter
 from .asr.whisper import Translation, WhisperTranslator
 from .audio.backends import CaptureBackend
 from .clock import now
@@ -127,6 +128,7 @@ class Pipeline:
         # Rolling tally so a silent app can say why, at INFO, without DEBUG.
         self._reasons: Counter[str] = Counter()
         self._last_report = now()
+        self.duty = DutyLimiter(cfg.asr.max_duty_cycle)
 
     @property
     def idle(self) -> bool:
@@ -203,11 +205,20 @@ class Pipeline:
                 self.stats.bump("dropped_stale")
                 log.debug("dropping stale utterance (%.1fs old) before ASR", utt.age)
                 continue
+            if not self.duty.allow():
+                self.stats.bump("rejected")
+                self._reasons["gpu-budget"] += 1
+                log.debug("over GPU budget (%.0f%%), dropping", self.duty.busy_fraction() * 100)
+                self._maybe_report()
+                continue
+            t_infer = now()
             try:
                 result = self.translator.translate(utt)
             except Exception:
                 log.exception("translation failed")
                 continue
+            finally:
+                self.duty.record(now() - t_infer)
             if result is None:
                 self.stats.bump("rejected")
                 reason = getattr(self.translator, "last_reject_reason", None) or "unknown"
@@ -238,7 +249,12 @@ class Pipeline:
             return
         self._last_report = now()
         detail = ", ".join(f"{n}x {r}" for r, n in self._reasons.most_common(4))
-        log.info("nothing spoken in the last %.0fs -- dropped: %s", every, detail)
+        log.info(
+            "nothing spoken in the last %.0fs (inference load %.0f%%) -- dropped: %s",
+            every,
+            self.duty.busy_fraction() * 100,
+            detail,
+        )
         self._reasons.clear()
 
     # -- stage 3: Piper + playback ----------------------------------------

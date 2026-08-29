@@ -152,6 +152,13 @@ def build_parser() -> argparse.ArgumentParser:
         "Use if running alongside a game leaves it short of VRAM.",
     )
     p.add_argument(
+        "--max-gpu-duty",
+        type=float,
+        metavar="FRACTION",
+        help="cap the share of wall time spent inferring, e.g. 0.3 (0 = unlimited). "
+        "Bounds the framerate cost, at the price of dropping some utterances.",
+    )
+    p.add_argument(
         "--priority",
         choices=["normal", "below_normal", "idle"],
         help="Windows scheduling priority (default: below_normal)",
@@ -175,6 +182,8 @@ def apply_overrides(cfg: AppConfig, args: argparse.Namespace) -> None:
         cfg.tts.voice = args.voice
     if args.duck:
         cfg.pipeline.duck_game_audio = True
+    if args.max_gpu_duty is not None:
+        cfg.asr.max_duty_cycle = args.max_gpu_duty
     if args.idle_unload is not None:
         cfg.asr.idle_unload_s = args.idle_unload
     if args.priority:

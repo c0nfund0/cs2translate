@@ -75,6 +75,14 @@ class AsrConfig:
     # Whisper's classic failure mode on non-speech audio is looping n-grams.
     max_compression_ratio: float = 2.4
     download_root: Path | None = None
+    # CTranslate2 worker threads. 0 = its default (one per core), which
+    # competes with the game's render thread for no benefit on GPU.
+    cpu_threads: int = 2
+    # Move the model out of VRAM after this many seconds with nothing to
+    # translate, and pull it back on demand. 0 disables. Frees ~3GB while
+    # nobody is talking, at the cost of ~0.3-1s on the first callout after a
+    # quiet stretch.
+    idle_unload_s: float = 0.0
 
 
 @dataclass
@@ -101,6 +109,10 @@ class PipelineConfig:
     # Optional: duck other apps' volume while speaking (needs pycaw).
     duck_game_audio: bool = False
     duck_level: float = 0.35
+    # Windows scheduling priority. The game should always win a contended
+    # core; translation arriving 50ms later is invisible, a dropped frame
+    # is not. "normal" | "below_normal" | "idle"
+    process_priority: str = "below_normal"
 
 
 @dataclass

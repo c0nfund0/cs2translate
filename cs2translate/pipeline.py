@@ -194,6 +194,10 @@ class Pipeline:
             try:
                 utt = self._asr_q.get(timeout=0.2)
             except queue.Empty:
+                # Nothing waiting: a good moment to hand VRAM back to the game.
+                unload = getattr(self.translator, "maybe_unload", None)
+                if unload is not None:
+                    unload()
                 continue
             if utt.age > self.max_age:
                 self.stats.bump("dropped_stale")

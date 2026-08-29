@@ -118,6 +118,34 @@ leaves the rest digitally silent, so the mono downmix normalises by the channels
 actually carrying signal. `--monitor` shows the per-channel levels, so you can
 see which ones are live.
 
+## Running alongside the game
+
+The app competes with CS2 for both VRAM and cores. Defaults now lean toward the
+game: Windows scheduling priority is `below_normal`, and the CPU thread pools
+are capped at 2 (Piper's onnxruntime session would otherwise saturate every
+core for a 100ms synthesis).
+
+VRAM is the bigger lever. large-v3 at fp16 holds ~3GB, and once the game plus
+the model exceed the card the driver starts evicting — which shows up as a
+**sustained** framerate collapse rather than occasional hitches.
+
+| Setting | VRAM | Cost |
+|---|---|---|
+| `--compute-type float16` (default) | ~3.0 GB | — |
+| `--compute-type int8_float16` | ~1.6 GB | slight accuracy loss |
+| `--model medium --compute-type int8_float16` | ~0.8 GB | noticeably weaker translation |
+| `--idle-unload 30` | 0 GB while idle | ~0.3-1s on the first callout after a quiet spell |
+
+`--idle-unload` hands the weights back to system RAM after a quiet stretch and
+pulls them in again on demand, so the game keeps the VRAM during the long
+stretches when nobody is talking. It is off by default because it trades
+latency for headroom.
+
+To tell VRAM pressure from compute contention: `--compute-type int8_float16`
+halves memory with near-identical compute. If the framerate recovers, it was
+memory. If only `--model medium` helps, it was compute. `nvidia-smi` while both
+are running shows which.
+
 ## Tuning
 
 Copy `config.example.toml` and pass `--config`.

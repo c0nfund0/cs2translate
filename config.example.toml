@@ -23,6 +23,8 @@ device = "cuda"
 compute_type = "auto"       # auto = float16, stepping down if VRAM is tight
 vram_guard_mib = 4608
 beam_size = 1               # greedy; beam search costs latency we do not have
+cpu_threads = 2             # keep cores free for the game
+idle_unload_s = 0.0         # >0 hands VRAM back after this many idle seconds
 skip_languages = ["en"]     # do not speak English back at you
 min_language_probability = 0.5
 
@@ -35,3 +37,4 @@ max_gap_wait_ms = 1500      # hold a line this long waiting for a gap in speech
 [pipeline]
 max_utterance_age_ms = 4000 # a callout older than this is worse than silence
 duck_game_audio = false
+process_priority = "below_normal"   # normal | below_normal | idle

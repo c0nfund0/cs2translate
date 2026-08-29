@@ -13,6 +13,7 @@ from .audio.gate import FeedbackGate
 from .config import AppConfig
 from .logging_setup import setup as setup_logging
 from .pipeline import Pipeline
+from .priority import set_process_priority
 from .vad.segmenter import Segmenter
 from .vad.silero import load_vad
 
@@ -143,6 +144,18 @@ def build_parser() -> argparse.ArgumentParser:
         "whether audio is reaching the app at all.",
     )
     p.add_argument("--duck", action="store_true", help="lower other apps' volume while speaking")
+    p.add_argument(
+        "--idle-unload",
+        type=float,
+        metavar="SECONDS",
+        help="hand the model's VRAM back after this many idle seconds (0 = never). "
+        "Use if running alongside a game leaves it short of VRAM.",
+    )
+    p.add_argument(
+        "--priority",
+        choices=["normal", "below_normal", "idle"],
+        help="Windows scheduling priority (default: below_normal)",
+    )
     p.add_argument("--log-level", default=None, help="DEBUG | INFO | WARNING")
     return p
 
@@ -162,6 +175,10 @@ def apply_overrides(cfg: AppConfig, args: argparse.Namespace) -> None:
         cfg.tts.voice = args.voice
     if args.duck:
         cfg.pipeline.duck_game_audio = True
+    if args.idle_unload is not None:
+        cfg.asr.idle_unload_s = args.idle_unload
+    if args.priority:
+        cfg.pipeline.process_priority = args.priority
     if args.log_level:
         cfg.log_level = args.log_level
 
@@ -177,6 +194,8 @@ def main(argv: list[str] | None = None) -> int:
 
     cache = Path(cfg.cache_dir)
     cache.mkdir(parents=True, exist_ok=True)
+
+    set_process_priority(cfg.pipeline.process_priority)
 
     gate = FeedbackGate(cfg.audio.gate_tail_ms)
 

@@ -76,11 +76,15 @@ class WhisperTranslator:
         # Why the last utterance was dropped. The pipeline aggregates these so
         # a silent app can explain itself without needing DEBUG.
         self.last_reject_reason: str | None = None
+        self._resident = True
+        self._last_used = now()
 
     def _load(self, compute_type: str):
         from faster_whisper import WhisperModel
 
         kwargs = {"device": self.cfg.device, "compute_type": compute_type}
+        if self.cfg.cpu_threads:
+            kwargs["cpu_threads"] = self.cfg.cpu_threads
         if self.cfg.download_root:
             kwargs["download_root"] = str(Path(self.cfg.download_root))
         log.info("loading %s (%s, %s)", self.cfg.model, self.cfg.device, compute_type)
@@ -108,7 +112,46 @@ class WhisperTranslator:
         except Exception as exc:  # pragma: no cover
             log.warning("warmup failed: %s", exc)
 
+    def _ct2(self):
+        """The underlying CTranslate2 model, if this faster-whisper build
+        exposes one that supports moving weights off the GPU."""
+        ct = getattr(self.model, "model", None)
+        if ct is not None and hasattr(ct, "unload_model") and hasattr(ct, "load_model"):
+            return ct
+        return None
+
+    def ensure_resident(self) -> None:
+        if self._resident:
+            return
+        ct = self._ct2()
+        if ct is not None:
+            t0 = now()
+            ct.load_model()
+            log.debug("model back in VRAM in %.0fms", (now() - t0) * 1000)
+        self._resident = True
+
+    def maybe_unload(self) -> bool:
+        """Move weights out of VRAM after a quiet stretch.
+
+        large-v3 at fp16 holds ~3GB. Handing that back while nobody is talking
+        is the difference between the game having enough VRAM and the driver
+        evicting textures every frame. Costs ~0.3-1s on the next callout.
+        """
+        if not self.cfg.idle_unload_s or not self._resident:
+            return False
+        if now() - self._last_used < self.cfg.idle_unload_s:
+            return False
+        ct = self._ct2()
+        if ct is None:
+            return False
+        ct.unload_model(to_cpu=True)
+        self._resident = False
+        log.info("model moved out of VRAM after %.0fs idle", self.cfg.idle_unload_s)
+        return True
+
     def translate(self, utt: Utterance) -> Translation | None:
+        self.ensure_resident()
+        self._last_used = now()
         t0 = now()
         segments, info = self.model.transcribe(
             utt.audio,
@@ -123,6 +166,7 @@ class WhisperTranslator:
         )
         segments = list(segments)
         asr_ms = (now() - t0) * 1000
+        self._last_used = now()
         self.last_reject_reason = None
 
         if not segments:

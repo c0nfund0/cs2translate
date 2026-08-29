@@ -42,6 +42,13 @@ def _prepare_frozen_env() -> None:
 def main() -> int:
     multiprocessing.freeze_support()
     _prepare_frozen_env()
+
+    # Before importing anything that reads thread-count environment variables
+    # at import time (numpy, onnxruntime, ctranslate2).
+    from cs2translate.priority import limit_math_threads
+
+    limit_math_threads(2)
+
     from cs2translate.__main__ import main as real_main
 
     return real_main()

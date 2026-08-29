@@ -31,6 +31,11 @@ jobs:
   build:
     runs-on: windows-latest
     timeout-minutes: 45
+    # This repo's default workflow token is read-only, so creating a release on
+    # a tag would 403 without this. Scoped to the job rather than raised
+    # repo-wide, so only tag builds can write.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v7
 
@@ -94,8 +99,32 @@ jobs:
           path: cs2translate-windows-x64.zip
           retention-days: 30
 
-      - name: Attach to release
+      - name: Publish release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v3
         with:
           files: cs2translate-windows-x64.zip
+          generate_release_notes: true
+          name: cs2translate ${{ github.ref_name }}
+          body: |
+            Real-time local CS2 voice translation with spoken English output.
+
+            **Download `cs2translate-windows-x64.zip`**, unzip anywhere on the
+            Windows machine, and run `cs2translate.exe`. Python is not needed on
+            the target machine.
+
+            The download is large because cuBLAS and cuDNN are bundled — that is
+            what lets fp16 inference work on a machine with only an NVIDIA
+            driver and no CUDA toolkit installed.
+
+            Models are **not** bundled (whisper large-v3 alone is ~3GB); they
+            download to `%USERPROFILE%\.cache\cs2translate` on first run.
+
+            First steps:
+            ```
+            cs2translate.exe --list-devices    :: confirm the right loopback device
+            cs2translate.exe                   :: run it
+            cs2translate.exe --log-level DEBUG :: per-utterance timings
+            ```
+            Set CS2 to borderless windowed; exclusive fullscreen can break
+            loopback capture.

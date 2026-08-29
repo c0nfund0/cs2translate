@@ -110,7 +110,7 @@ firing (level or threshold), or both working (problem is downstream in ASR/TTS).
 **Surround endpoints.** If the startup log shows more than 2 channels, e.g.
 
 ```
-capturing loopback: Speakers (PRO X 2 LIGHTSPEED) [Loopback] (48000 Hz, 8 ch)
+capturing loopback: Speakers (Your Headset) [Loopback] (48000 Hz, 8 ch)
 ```
 
 that is a 7.1 endpoint. Windows puts ordinary stereo content in front L/R and

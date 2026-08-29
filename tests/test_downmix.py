@@ -1,7 +1,7 @@
 """Multichannel downmix.
 
-Regression cover for a bug found on a real 7.1 headset (Logitech PRO X 2,
-8-channel endpoint): averaging across all channels when only front L/R carry
+Regression cover for a bug found on a real 7.1 headset exposing an
+8-channel loopback endpoint: averaging across all channels when only front L/R carry
 signal attenuated everything by 12 dB before the VAD saw it.
 """
 from __future__ import annotations

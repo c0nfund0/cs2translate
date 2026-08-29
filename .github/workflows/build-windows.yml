@@ -4,17 +4,14 @@ name: build-windows-exe
 # cross-compile and the payload here is native (CTranslate2, onnxruntime,
 # PortAudio, cuDNN), so this is the only place the exe can be produced.
 on:
+  # Tag-only. Pushing to a branch never builds. A full build downloads ~1.5GB
+  # of CUDA libraries, takes ~9 minutes, and bills at 2x on Windows runners, so
+  # it runs when a version is actually being cut -- not on every commit.
   push:
-    branches: [main]
     tags: ["v*"]
-    # Doc-only edits should not spend 20 minutes downloading CUDA.
-    paths-ignore:
-      - "**/*.md"
-      - ".gitignore"
-  pull_request:
-    branches: [main]
-    paths-ignore:
-      - "**/*.md"
+
+  # Manual escape hatch: build the exe without cutting a tag. Produces a
+  # 30-day artifact, does NOT publish a release.
   workflow_dispatch:
     inputs:
       with_cuda:
@@ -22,7 +19,7 @@ on:
         type: boolean
         default: true
 
-# A new push supersedes an in-flight build of the same branch.
+# A re-run of the same tag supersedes an in-flight build.
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true

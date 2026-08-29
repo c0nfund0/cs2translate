@@ -140,11 +140,24 @@ payload here is native (CTranslate2, onnxruntime, PortAudio, optionally cuDNN).
 
 ### Option A — GitHub Actions (nothing to install)
 
-Push this repo, then Actions → **build-windows-exe** → *Run workflow*. It builds
-on a `windows-latest` runner, runs the test suite, smoke-tests the frozen exe,
-and uploads `cs2translate-windows-x64.zip` as an artifact. Tagging `v*` also
-attaches it to a release. Download, unzip on the gaming PC, run
-`cs2translate.exe`.
+CI **does not build on every push**. A full build pulls ~1.5GB of CUDA
+libraries, takes ~9 minutes, and Windows runners bill at 2x, so it runs only
+when a version is cut:
+
+```bash
+git tag -a v0.1.1 -m "what changed"
+git push origin v0.1.1
+```
+
+That builds on a `windows-latest` runner, runs the test suite, smoke-tests the
+frozen exe, and publishes a **Release** with `cs2translate-windows-x64.zip`
+attached. Download, unzip on the gaming PC, run `cs2translate.exe`.
+
+To build without cutting a version, use Actions → **build-windows-exe** →
+*Run workflow*. That uploads a 30-day artifact and publishes no release.
+
+Note the difference: artifacts live under the Actions run and expire after 30
+days; releases are permanent and appear on the repo's Releases page.
 
 ### Option B — build on the Windows machine
 
